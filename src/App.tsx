@@ -642,14 +642,17 @@ export default function App() {
             >
               <Trash2 size={14} />
             </button>
-            <div onClick={(e) => { e.stopPropagation(); toggleBillStatus(bill.id); }} className="flex items-center gap-4 flex-1">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0" style={{ backgroundColor: bill.bg }}>
-                {bill.emoji}
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-bold">{bill.name}</p>
-                <p className="text-[10px] text-ink-3">Vence todo dia {bill.due}</p>
-                <div className="flex items-center gap-1 mt-1">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0" style={{ backgroundColor: bill.bg }}>
+              {bill.emoji}
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-bold">{bill.name}</p>
+              <p className="text-[10px] text-ink-3">Vence todo dia {bill.due}</p>
+              <div className="flex items-center gap-1 mt-1">
+                <button 
+                  onClick={(e) => { e.stopPropagation(); toggleBillStatus(bill.id); }}
+                  className="transition-transform active:scale-95"
+                >
                   {bill.status === 'paid' ? (
                     <span className="text-[10px] font-bold text-accent bg-accent-light px-2 py-0.5 rounded-full flex items-center gap-1">
                       <CheckCircle2 size={10} /> ✓ Pago
@@ -663,12 +666,12 @@ export default function App() {
                       <AlertCircle size={10} /> ⚠️ Atrasado
                     </span>
                   )}
-                </div>
+                </button>
               </div>
-              <div className="text-right pr-4">
-                <p className="text-base font-bold font-display">R$ {bill.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                <p className="text-[10px] text-ink-3">{bill.recur}</p>
-              </div>
+            </div>
+            <div className="text-right pr-4">
+              <p className="text-base font-bold font-display">R$ {bill.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+              <p className="text-[10px] text-ink-3">{bill.recur}</p>
             </div>
           </div>
         ))}
@@ -1120,21 +1123,72 @@ export default function App() {
                 className="w-full bg-surface-2 rounded-2xl p-4 text-sm font-medium outline-none" 
               />
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] font-bold text-ink-3 uppercase tracking-widest block mb-2">Valor</label>
+                <input 
+                  type="number" 
+                  defaultValue={editingBill.amount}
+                  id="edit-bill-amount"
+                  className="w-full bg-surface-2 rounded-2xl p-4 text-sm font-medium outline-none" 
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-ink-3 uppercase tracking-widest block mb-2">Vencimento (Dia)</label>
+                <input 
+                  type="number" 
+                  min="1" 
+                  max="31"
+                  defaultValue={editingBill.due}
+                  id="edit-bill-due"
+                  className="w-full bg-surface-2 rounded-2xl p-4 text-sm font-medium outline-none" 
+                />
+              </div>
+            </div>
             <div>
-              <label className="text-[10px] font-bold text-ink-3 uppercase tracking-widest block mb-2">Valor</label>
-              <input 
-                type="number" 
-                defaultValue={editingBill.amount}
-                id="edit-bill-amount"
-                className="w-full bg-surface-2 rounded-2xl p-4 text-sm font-medium outline-none" 
-              />
+              <label className="text-[10px] font-bold text-ink-3 uppercase tracking-widest block mb-2">Recorrência</label>
+              <select 
+                defaultValue={editingBill.recur}
+                id="edit-bill-recur"
+                className="w-full bg-surface-2 rounded-2xl p-4 text-sm font-medium outline-none appearance-none"
+              >
+                <option value="Mensal">Mensal</option>
+                <option value="Anual">Anual</option>
+                <option value="Semanal">Semanal</option>
+              </select>
+            </div>
+            <div className="flex items-center justify-between bg-surface-2 p-4 rounded-2xl">
+              <span className="text-[10px] font-bold text-ink-3 uppercase tracking-widest">Status do Pagamento</span>
+              <button 
+                onClick={() => {
+                  const statuses: Bill['status'][] = ['pending', 'paid', 'overdue'];
+                  const nextStatus = statuses[(statuses.indexOf(editingBill.status) + 1) % statuses.length];
+                  setBills(bills.map(b => b.id === editingBill.id ? { ...b, status: nextStatus } : b));
+                  setEditingBill({ ...editingBill, status: nextStatus });
+                }}
+                className={`px-4 py-2 rounded-full text-[10px] font-bold transition-all ${
+                  editingBill.status === 'paid' ? 'bg-accent text-white' : 
+                  editingBill.status === 'pending' ? 'bg-warning text-ink' : 'bg-danger text-white'
+                }`}
+              >
+                {editingBill.status === 'paid' ? '✓ Pago' : editingBill.status === 'pending' ? '⏳ Pendente' : '⚠️ Atrasado'}
+              </button>
             </div>
             <div className="flex gap-4">
               <button 
                 onClick={() => {
                   const newName = (document.getElementById('edit-bill-name') as HTMLInputElement).value;
                   const newAmount = parseFloat((document.getElementById('edit-bill-amount') as HTMLInputElement).value);
-                  setBills(bills.map(b => b.id === editingBill.id ? { ...b, name: newName, amount: newAmount } : b));
+                  const newDue = parseInt((document.getElementById('edit-bill-due') as HTMLInputElement).value);
+                  const newRecur = (document.getElementById('edit-bill-recur') as HTMLSelectElement).value;
+                  
+                  setBills(bills.map(b => b.id === editingBill.id ? { 
+                    ...b, 
+                    name: newName, 
+                    amount: newAmount,
+                    due: newDue,
+                    recur: newRecur
+                  } : b));
                   setModalOpen(null);
                   showToast('✅ Conta atualizada');
                 }}
