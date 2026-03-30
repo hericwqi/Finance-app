@@ -16,7 +16,7 @@ This project is configured for easy deployment to Netlify.
 
 3.  **Environment Variables:**
     *   Go to **Site settings** > **Environment variables**.
-    *   Add `GEMINI_API_KEY` with your Google AI Studio API key.
+    *   Add any required environment variables if needed (e.g., `APP_URL`).
 
 4.  **Deploy:**
     *   Click "Deploy site".
