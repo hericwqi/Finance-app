@@ -20,6 +20,21 @@
   --color-border: #E2DDD7;
 }
 
+.dark {
+  --color-bg: #0D0C0B;
+  --color-surface: #1A1714;
+  --color-surface-2: #24211E;
+  --color-ink: #F5F3EE;
+  --color-ink-2: #A09A94;
+  --color-ink-3: #6B6560;
+  --color-border: #2D2A27;
+  
+  /* Adjusting light variants for dark mode */
+  --color-accent-light: rgba(45, 106, 79, 0.2);
+  --color-danger-light: rgba(193, 68, 14, 0.2);
+  --color-warning-light: rgba(181, 131, 10, 0.2);
+}
+
 @layer base {
   body {
     @apply bg-bg text-ink font-sans antialiased;

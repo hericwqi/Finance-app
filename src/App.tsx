@@ -145,6 +145,11 @@ export default function App() {
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
   const [editingBill, setEditingBill] = useState<Bill | null>(null);
+  const [notifications, setNotifications] = useState<{ id: string, title: string, time: string, read: boolean }[]>([
+    { id: '1', title: 'Salário recebido! 💼', time: 'Há 2 dias', read: false },
+    { id: '2', title: 'Conta de Luz vence amanhã ⚡', time: 'Há 1 hora', read: false },
+    { id: '3', title: 'Você atingiu 80% do orçamento de Lazer 🎭', time: 'Há 5 horas', read: true },
+  ]);
 
   // Form states
   const [formData, setFormData] = useState({
@@ -159,6 +164,25 @@ export default function App() {
   });
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [transactionFilter, setTransactionFilter] = useState<'all' | 'income' | 'expense'>('all');
+
+  // Handle Theme
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (profile.appearance === 'Escuro') {
+      root.classList.add('dark');
+    } else if (profile.appearance === 'Claro') {
+      root.classList.remove('dark');
+    } else {
+      // Sistema
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (systemTheme) {
+        root.classList.add('dark');
+      } else {
+        root.classList.remove('dark');
+      }
+    }
+  }, [profile.appearance]);
 
   const showToast = (msg: string) => setToast(msg);
 
@@ -320,7 +344,7 @@ export default function App() {
           { icon: '💸', label: 'Novo Gasto', color: 'bg-danger-light', action: () => setModalOpen('expense') },
           { icon: '💰', label: 'Receita', color: 'bg-accent-light', action: () => setModalOpen('income') },
           { icon: '📋', label: 'Conta Fixa', color: 'bg-warning-light', action: () => setModalOpen('bill') },
-          { icon: '📊', label: 'Relatório', color: 'bg-blue-100', action: () => showToast('📊 Relatório em breve') },
+          { icon: '📊', label: 'Relatório', color: 'bg-blue-100', action: () => setModalOpen('report') },
         ].map((item, i) => (
           <button 
             key={i}
@@ -372,7 +396,7 @@ export default function App() {
       <div className="px-4">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-display font-bold text-lg">Gastos por mês</h3>
-          <button onClick={() => showToast('📈 Análise completa')} className="text-accent text-xs font-bold">Ver mais</button>
+          <button onClick={() => setModalOpen('report')} className="text-accent text-xs font-bold">Ver mais</button>
         </div>
         <div className="bg-surface border border-border rounded-2xl p-5 h-[240px]">
           <p className="text-ink-3 text-[10px] font-bold uppercase tracking-wider mb-4">Total gasto (R$)</p>
@@ -381,40 +405,48 @@ export default function App() {
               data={[
                 { m: 'Jan', v: 2900 },
                 { m: 'Fev', v: 3400 },
-                { m: 'Mar', v: 3679 },
+                { m: 'Mar', v: totals.expenses },
                 { m: 'Abr', v: 0 },
                 { m: 'Mai', v: 0 },
                 { m: 'Jun', v: 0 },
               ]}
               margin={{ top: 0, right: 0, left: -20, bottom: 20 }}
             >
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2DDD7" />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
               <XAxis 
                 dataKey="m" 
                 axisLine={false} 
                 tickLine={false} 
-                tick={{ fontSize: 10, fontWeight: 700, fill: '#A09A94' }} 
+                tick={{ fontSize: 10, fontWeight: 700, fill: 'var(--color-ink-3)' }} 
                 dy={10}
               />
               <YAxis 
                 axisLine={false} 
                 tickLine={false} 
-                tick={{ fontSize: 10, fontWeight: 700, fill: '#A09A94' }} 
+                tick={{ fontSize: 10, fontWeight: 700, fill: 'var(--color-ink-3)' }} 
               />
               <Tooltip 
-                cursor={{ fill: 'rgba(26,23,20,0.05)' }}
-                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '12px', fontWeight: 700 }}
+                cursor={{ fill: 'rgba(128, 128, 128, 0.1)' }}
+                contentStyle={{ 
+                  borderRadius: '12px', 
+                  border: 'none', 
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)', 
+                  fontSize: '12px', 
+                  fontWeight: 700,
+                  backgroundColor: 'var(--color-surface)',
+                  color: 'var(--color-ink)'
+                }}
               />
               <Bar dataKey="v" radius={[4, 4, 0, 0]}>
                 {[
                   { m: 'Jan', v: 2900 },
                   { m: 'Fev', v: 3400 },
-                  { m: 'Mar', v: 3679 },
+                  { m: 'Mar', v: totals.expenses },
                   { m: 'Abr', v: 0 },
                   { m: 'Mai', v: 0 },
                   { m: 'Jun', v: 0 },
                 ].map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.m === selectedMonth ? '#1A1714' : '#EEEAE3'} />
+                  <Cell key={`cell-${index}`} fill={entry.m === selectedMonth ? 'var(--color-ink)' : 'var(--color-surface-2)'} />
                 ))}
               </Bar>
             </BarChart>
@@ -430,10 +462,17 @@ export default function App() {
         </div>
         <div className="space-y-3">
           {budgets.map((b) => {
-            const pct = Math.min((b.spent / b.limit) * 100, 100);
+            const spent = transactions
+              .filter(t => t.type === 'expense' && t.category === b.name)
+              .reduce((acc, t) => acc + t.amount, 0);
+            const pct = Math.min((spent / b.limit) * 100, 100);
             const color = pct >= 100 ? 'bg-danger' : pct >= 80 ? 'bg-warning' : 'bg-accent-mid';
             return (
-              <div key={b.id} className="bg-surface border border-border rounded-2xl p-4 hover:shadow-sm transition-shadow cursor-pointer relative group">
+              <div 
+                key={b.id} 
+                onClick={() => { setEditingBudget(b); setModalOpen('edit-budget'); }}
+                className="bg-surface border border-border rounded-2xl p-4 hover:shadow-sm transition-shadow cursor-pointer relative group"
+              >
                 <button 
                   onClick={(e) => { e.stopPropagation(); deleteBudget(b.id); }}
                   className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity text-danger p-1 hover:bg-danger-light rounded-lg"
@@ -449,8 +488,8 @@ export default function App() {
                     </div>
                   </div>
                   <div className="text-right pr-6">
-                    <p className="text-sm font-bold font-display">R$ {b.spent}</p>
-                    <p className="text-[10px] text-ink-3">de R$ {b.limit}</p>
+                    <p className="text-sm font-bold font-display">R$ {spent.toLocaleString('pt-BR')}</p>
+                    <p className="text-[10px] text-ink-3">de R$ {b.limit.toLocaleString('pt-BR')}</p>
                   </div>
                 </div>
                 <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden">
@@ -462,7 +501,7 @@ export default function App() {
                 </div>
                 <div className="flex justify-between mt-2">
                   <span className={`text-[10px] font-bold ${pct >= 100 ? 'text-danger' : 'text-accent'}`}>{Math.round(pct)}% usado</span>
-                  <span className="text-[10px] text-ink-3">R$ {Math.max(0, b.limit - b.spent)} restante</span>
+                  <span className="text-[10px] text-ink-3">R$ {Math.max(0, b.limit - spent).toLocaleString('pt-BR')} restante</span>
                 </div>
               </div>
             );
@@ -504,9 +543,8 @@ export default function App() {
   );
 
   const renderTransactions = () => {
-    const [filter, setFilter] = useState<'all' | 'income' | 'expense'>('all');
     const filtered = transactions.filter(t => {
-      const matchesFilter = filter === 'all' || t.type === filter;
+      const matchesFilter = transactionFilter === 'all' || t.type === transactionFilter;
       const matchesSearch = t.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                            t.category.toLowerCase().includes(searchTerm.toLowerCase());
       return matchesFilter && matchesSearch;
@@ -537,8 +575,8 @@ export default function App() {
           {(['all', 'expense', 'income'] as const).map((f) => (
             <button
               key={f}
-              onClick={() => setFilter(f)}
-              className={`flex-1 py-2 rounded-full text-xs font-bold transition-all ${filter === f ? 'bg-ink text-white shadow-md' : 'text-ink-3'}`}
+              onClick={() => setTransactionFilter(f)}
+              className={`flex-1 py-2 rounded-full text-xs font-bold transition-all ${transactionFilter === f ? 'bg-ink text-white shadow-md' : 'text-ink-3'}`}
             >
               {f === 'all' ? 'Todas' : f === 'expense' ? 'Gastos' : 'Receitas'}
             </button>
@@ -593,14 +631,18 @@ export default function App() {
       </div>
       <div className="space-y-3">
         {bills.map((bill) => (
-          <div key={bill.id} className="bg-surface border border-border rounded-2xl p-4 flex items-center gap-4 hover:shadow-sm transition-all cursor-pointer group relative">
+          <div 
+            key={bill.id} 
+            onClick={() => { setEditingBill(bill); setModalOpen('edit-bill'); }}
+            className="bg-surface border border-border rounded-2xl p-4 flex items-center gap-4 hover:shadow-sm transition-all cursor-pointer group relative"
+          >
             <button 
               onClick={(e) => { e.stopPropagation(); deleteBill(bill.id); }}
               className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-danger p-1 hover:bg-danger-light rounded-lg"
             >
               <Trash2 size={14} />
             </button>
-            <div onClick={() => toggleBillStatus(bill.id)} className="flex items-center gap-4 flex-1">
+            <div onClick={(e) => { e.stopPropagation(); toggleBillStatus(bill.id); }} className="flex items-center gap-4 flex-1">
               <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0" style={{ backgroundColor: bill.bg }}>
                 {bill.emoji}
               </div>
@@ -637,7 +679,7 @@ export default function App() {
   const renderProfile = () => (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="px-4 space-y-8 pb-10">
       <div className="flex flex-col items-center py-6">
-        <div className="w-24 h-24 bg-accent-light rounded-full flex items-center justify-center font-display font-bold text-3xl text-accent mb-4 border-4 border-white shadow-lg">
+        <div className="w-24 h-24 bg-accent-light rounded-full flex items-center justify-center font-display font-bold text-3xl text-accent mb-4 border-4 border-surface shadow-lg">
           {profile.name.split(' ').map(n => n[0]).join('')}
         </div>
         <h2 className="text-xl font-bold">{profile.name}</h2>
@@ -690,6 +732,16 @@ export default function App() {
                 if (item.key === 'notifications') {
                   setProfile({ ...profile, notifications: !profile.notifications });
                   showToast(`🔔 Notificações ${!profile.notifications ? 'ativadas' : 'desativadas'}`);
+                } else if (item.key === 'appearance') {
+                  const themes: UserProfile['appearance'][] = ['Claro', 'Escuro', 'Sistema'];
+                  const nextTheme = themes[(themes.indexOf(profile.appearance) + 1) % themes.length];
+                  setProfile({ ...profile, appearance: nextTheme });
+                  showToast(`🎨 Tema alterado para ${nextTheme}`);
+                } else if (item.key === 'currency') {
+                  const currencies = ['R$ — Real Brasileiro', '$ — Dólar Americano', '€ — Euro'];
+                  const nextCurrency = currencies[(currencies.indexOf(profile.currency) + 1) % currencies.length];
+                  setProfile({ ...profile, currency: nextCurrency });
+                  showToast(`💱 Moeda alterada para ${nextCurrency.split(' ')[0]}`);
                 } else {
                   showToast('⚙️ Configuração em breve');
                 }
@@ -708,7 +760,10 @@ export default function App() {
       </div>
 
       <button 
-        onClick={() => showToast('👋 Até logo!')}
+        onClick={() => {
+          showToast('👋 Saindo...');
+          setTimeout(() => window.location.reload(), 1000);
+        }}
         className="w-full flex items-center justify-center gap-2 bg-danger-light text-danger py-4 rounded-2xl font-bold mt-4"
       >
         <LogOut size={18} /> Sair da conta
@@ -722,9 +777,11 @@ export default function App() {
       <header className="sticky top-0 z-[100] bg-surface/80 backdrop-blur-md border-b border-border px-5 py-4 flex items-center justify-between">
         <div className="font-display font-black text-2xl tracking-tighter">flu<span className="text-accent">x</span>o</div>
         <div className="flex items-center gap-3">
-          <button onClick={() => showToast('📬 Sem novas notificações')} className="w-10 h-10 bg-surface-2 rounded-full flex items-center justify-center hover:bg-border transition-colors relative">
+          <button onClick={() => setModalOpen('notifications')} className="w-10 h-10 bg-surface-2 rounded-full flex items-center justify-center hover:bg-border transition-colors relative">
             <Bell size={20} />
-            <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-danger rounded-full border-2 border-surface" />
+            {notifications.some(n => !n.read) && (
+              <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-danger rounded-full border-2 border-surface" />
+            )}
           </button>
           <div onClick={() => setActivePage('profile')} className="w-10 h-10 bg-accent-light rounded-full flex items-center justify-center font-display font-bold text-accent cursor-pointer hover:scale-105 transition-transform">
             MR
@@ -999,6 +1056,173 @@ export default function App() {
             />
           </div>
           <button onClick={addBudget} className="w-full bg-ink text-white py-5 rounded-full font-bold shadow-lg">Criar Orçamento</button>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={modalOpen === 'edit-budget'}
+        onClose={() => setModalOpen(null)}
+        title="Editar Orçamento 🎯"
+        subtitle="Ajuste o limite da categoria"
+      >
+        {editingBudget && (
+          <div className="space-y-5">
+            <div>
+              <label className="text-[10px] font-bold text-ink-3 uppercase tracking-widest block mb-2">Categoria</label>
+              <p className="text-lg font-bold">{editingBudget.emoji} {editingBudget.name}</p>
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-ink-3 uppercase tracking-widest block mb-2">Novo Limite</label>
+              <input 
+                type="number" 
+                defaultValue={editingBudget.limit}
+                id="edit-budget-limit"
+                className="w-full bg-surface-2 rounded-2xl p-4 text-sm font-medium outline-none" 
+              />
+            </div>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => {
+                  const newLimit = parseFloat((document.getElementById('edit-budget-limit') as HTMLInputElement).value);
+                  setBudgets(budgets.map(b => b.id === editingBudget.id ? { ...b, limit: newLimit } : b));
+                  setModalOpen(null);
+                  showToast('✅ Orçamento atualizado');
+                }}
+                className="flex-1 bg-ink text-white py-4 rounded-full font-bold shadow-md"
+              >
+                Salvar
+              </button>
+              <button 
+                onClick={() => deleteBudget(editingBudget.id)}
+                className="w-14 h-14 bg-danger-light text-danger rounded-full flex items-center justify-center hover:bg-danger hover:text-white transition-all"
+              >
+                <Trash2 size={24} />
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={modalOpen === 'edit-bill'}
+        onClose={() => setModalOpen(null)}
+        title="Editar Conta 📋"
+        subtitle="Altere os dados da conta fixa"
+      >
+        {editingBill && (
+          <div className="space-y-5">
+            <div>
+              <label className="text-[10px] font-bold text-ink-3 uppercase tracking-widest block mb-2">Nome</label>
+              <input 
+                type="text" 
+                defaultValue={editingBill.name}
+                id="edit-bill-name"
+                className="w-full bg-surface-2 rounded-2xl p-4 text-sm font-medium outline-none" 
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-ink-3 uppercase tracking-widest block mb-2">Valor</label>
+              <input 
+                type="number" 
+                defaultValue={editingBill.amount}
+                id="edit-bill-amount"
+                className="w-full bg-surface-2 rounded-2xl p-4 text-sm font-medium outline-none" 
+              />
+            </div>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => {
+                  const newName = (document.getElementById('edit-bill-name') as HTMLInputElement).value;
+                  const newAmount = parseFloat((document.getElementById('edit-bill-amount') as HTMLInputElement).value);
+                  setBills(bills.map(b => b.id === editingBill.id ? { ...b, name: newName, amount: newAmount } : b));
+                  setModalOpen(null);
+                  showToast('✅ Conta atualizada');
+                }}
+                className="flex-1 bg-ink text-white py-4 rounded-full font-bold shadow-md"
+              >
+                Salvar
+              </button>
+              <button 
+                onClick={() => deleteBill(editingBill.id)}
+                className="w-14 h-14 bg-danger-light text-danger rounded-full flex items-center justify-center hover:bg-danger hover:text-white transition-all"
+              >
+                <Trash2 size={24} />
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={modalOpen === 'report'}
+        onClose={() => setModalOpen(null)}
+        title="Relatório Mensal 📊"
+        subtitle="Resumo das suas finanças em Março"
+      >
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-accent-light p-4 rounded-2xl">
+              <p className="text-[10px] font-bold text-accent uppercase tracking-wider mb-1">Total Recebido</p>
+              <p className="text-xl font-bold text-accent">R$ {totals.income.toLocaleString('pt-BR')}</p>
+            </div>
+            <div className="bg-danger-light p-4 rounded-2xl">
+              <p className="text-[10px] font-bold text-danger uppercase tracking-wider mb-1">Total Gasto</p>
+              <p className="text-xl font-bold text-danger">R$ {totals.expenses.toLocaleString('pt-BR')}</p>
+            </div>
+          </div>
+          
+          <div>
+            <h4 className="text-sm font-bold mb-3">Insights do Mês</h4>
+            <div className="space-y-3">
+              <div className="flex items-start gap-3 bg-surface-2 p-3 rounded-xl">
+                <div className="text-xl">💡</div>
+                <p className="text-xs text-ink-2">Você economizou <b>R$ {(totals.income - totals.expenses).toLocaleString('pt-BR')}</b> este mês. Continue assim!</p>
+              </div>
+              <div className="flex items-start gap-3 bg-surface-2 p-3 rounded-xl">
+                <div className="text-xl">⚠️</div>
+                <p className="text-xs text-ink-2">Seus gastos com <b>Moradia</b> representam {Math.round((1800 / totals.income) * 100)}% da sua renda.</p>
+              </div>
+            </div>
+          </div>
+
+          <button onClick={() => setModalOpen(null)} className="w-full bg-ink text-white py-4 rounded-full font-bold">Fechar</button>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={modalOpen === 'notifications'}
+        onClose={() => setModalOpen(null)}
+        title="Notificações 🔔"
+        subtitle="Fique por dentro das suas finanças"
+      >
+        <div className="space-y-3">
+          {notifications.map(n => (
+            <div 
+              key={n.id} 
+              onClick={() => setNotifications(notifications.map(notif => notif.id === n.id ? { ...notif, read: true } : notif))}
+              className={`p-4 rounded-2xl border transition-all cursor-pointer ${n.read ? 'bg-surface border-border opacity-60' : 'bg-accent-light border-accent shadow-sm'}`}
+            >
+              <div className="flex justify-between items-start mb-1">
+                <p className="text-sm font-bold">{n.title}</p>
+                {!n.read && <div className="w-2 h-2 bg-accent rounded-full" />}
+              </div>
+              <p className="text-[10px] text-ink-3">{n.time}</p>
+            </div>
+          ))}
+          {notifications.length === 0 && (
+            <div className="text-center py-10 opacity-40">
+              <p className="font-bold">Nenhuma notificação</p>
+            </div>
+          )}
+          <button 
+            onClick={() => {
+              setNotifications(notifications.map(n => ({ ...n, read: true })));
+              showToast('✅ Todas lidas');
+            }} 
+            className="w-full text-accent text-xs font-bold py-2 mt-2"
+          >
+            Marcar todas como lidas
+          </button>
         </div>
       </Modal>
 
