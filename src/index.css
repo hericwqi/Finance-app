@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Syne", sans-serif;
+
+  --color-bg: #F5F3EE;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #EEEAE3;
+  --color-ink: #1A1714;
+  --color-ink-2: #6B6560;
+  --color-ink-3: #A09A94;
+  --color-accent: #2D6A4F;
+  --color-accent-light: #D8F3DC;
+  --color-accent-mid: #52B788;
+  --color-danger: #C1440E;
+  --color-danger-light: #FDEEE8;
+  --color-warning: #B5830A;
+  --color-warning-light: #FEF3CD;
+  --color-border: #E2DDD7;
+}
+
+@layer base {
+  body {
+    @apply bg-bg text-ink font-sans antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  h1, h2, h3, .display {
+    @apply font-display tracking-tight;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
