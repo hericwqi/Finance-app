@@ -80,6 +80,7 @@ const INITIAL_BILLS: Bill[] = [
   { id: 'bl3', emoji: '⚡', bg: '#FEF3CD', name: 'Conta de Luz', amount: 187.30, due: 18, status: 'pending', recur: 'Mensal' },
   { id: 'bl4', emoji: '🏋️', bg: '#D8F3DC', name: 'Academia', amount: 89.90, due: 1, status: 'paid', recur: 'Mensal' },
   { id: 'bl5', emoji: '💧', bg: '#E8F8FF', name: 'Conta de Água', amount: 63.40, due: 22, status: 'overdue', recur: 'Mensal' },
+  { id: 'bl6', emoji: '📱', bg: '#F5F5FF', name: 'Plano de Celular', amount: 49.90, due: 31, status: 'pending', recur: 'Mensal' },
 ];
 
 // --- COMPONENTS ---
@@ -145,11 +146,85 @@ export default function App() {
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
   const [editingBill, setEditingBill] = useState<Bill | null>(null);
-  const [notifications, setNotifications] = useState<{ id: string, title: string, time: string, read: boolean }[]>([
-    { id: '1', title: 'Salário recebido! 💼', time: 'Há 2 dias', read: false },
-    { id: '2', title: 'Conta de Luz vence amanhã ⚡', time: 'Há 1 hora', read: false },
-    { id: '3', title: 'Você atingiu 80% do orçamento de Lazer 🎭', time: 'Há 5 horas', read: true },
-  ]);
+  const [notifications, setNotifications] = useState<{ id: string, title: string, time: string, read: boolean }[]>([]);
+
+  // PWA Install Prompt State
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      // Prevent the mini-infobar from appearing on mobile
+      e.preventDefault();
+      // Stash the event so it can be triggered later.
+      setDeferredPrompt(e);
+      // Update UI notify the user they can install the PWA
+      // Only show if it's a mobile device (simple check)
+      if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+        setShowInstallPrompt(true);
+      }
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    
+    // Show the install prompt
+    deferredPrompt.prompt();
+    
+    // Wait for the user to respond to the prompt
+    const { outcome } = await deferredPrompt.userChoice;
+    
+    if (outcome === 'accepted') {
+      console.log('User accepted the install prompt');
+    } else {
+      console.log('User dismissed the install prompt');
+    }
+    
+    // We've used the prompt, and can't use it again, throw it away
+    setDeferredPrompt(null);
+    setShowInstallPrompt(false);
+  };
+
+  // Update notifications based on bills due tomorrow
+  useEffect(() => {
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    const tomorrowDay = tomorrow.getDate();
+
+    const billReminders = bills
+      .filter(bill => bill.due === tomorrowDay && bill.status !== 'paid')
+      .map(bill => {
+        const dateStr = `${tomorrowDay.toString().padStart(2, '0')}/${(tomorrow.getMonth() + 1).toString().padStart(2, '0')}`;
+        return {
+          id: `bill-${bill.id}`,
+          title: `${bill.name} vence amanhã ${bill.emoji}`,
+          time: `Vencimento em ${dateStr}`,
+          read: false
+        };
+      });
+
+    setNotifications(prev => {
+      const reconciled = billReminders.map(reminder => {
+        const existing = prev.find(p => p.id === reminder.id);
+        return existing ? { ...reminder, read: existing.read } : reminder;
+      });
+
+      // Compare titles and IDs to detect meaningful changes
+      const prevContent = prev.map(p => `${p.id}:${p.title}`).sort().join('|');
+      const nextContent = reconciled.map(n => `${n.id}:${n.title}`).sort().join('|');
+      
+      if (prevContent === nextContent) return prev;
+      return reconciled;
+    });
+  }, [bills]);
 
   // Form states
   const [formData, setFormData] = useState({
@@ -467,11 +542,14 @@ export default function App() {
               .reduce((acc, t) => acc + t.amount, 0);
             const pct = Math.min((spent / b.limit) * 100, 100);
             const color = pct >= 100 ? 'bg-danger' : pct >= 80 ? 'bg-warning' : 'bg-accent-mid';
+            const cardBg = pct >= 100 ? 'bg-danger-light/30' : pct >= 80 ? 'bg-warning-light/30' : 'bg-surface';
+            const borderColor = pct >= 100 ? 'border-danger/40' : pct >= 80 ? 'border-warning/40' : 'border-border';
+            
             return (
               <div 
                 key={b.id} 
                 onClick={() => { setEditingBudget(b); setModalOpen('edit-budget'); }}
-                className="bg-surface border border-border rounded-2xl p-4 hover:shadow-sm transition-shadow cursor-pointer relative group"
+                className={`${cardBg} border ${borderColor} rounded-2xl p-4 hover:shadow-md transition-all cursor-pointer relative group`}
               >
                 <button 
                   onClick={(e) => { e.stopPropagation(); deleteBudget(b.id); }}
@@ -481,27 +559,31 @@ export default function App() {
                 </button>
                 <div className="flex justify-between items-center mb-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-surface-2 rounded-lg flex items-center justify-center text-lg">{b.emoji}</div>
+                    <div className="w-10 h-10 bg-surface-2 rounded-xl flex items-center justify-center text-xl shadow-sm">{b.emoji}</div>
                     <div>
                       <p className="text-sm font-bold">{b.name}</p>
                       <p className="text-[10px] text-ink-3">Toque para gerenciar</p>
                     </div>
                   </div>
                   <div className="text-right pr-6">
-                    <p className="text-sm font-bold font-display">R$ {spent.toLocaleString('pt-BR')}</p>
-                    <p className="text-[10px] text-ink-3">de R$ {b.limit.toLocaleString('pt-BR')}</p>
+                    <p className="text-sm font-bold font-display">R$ {spent.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-[10px] text-ink-3">de R$ {b.limit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                   </div>
                 </div>
-                <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden">
+                <div className="h-2 bg-surface-2/50 rounded-full overflow-hidden">
                   <motion.div 
                     initial={{ width: 0 }}
                     animate={{ width: `${pct}%` }}
-                    className={`h-full ${color}`}
+                    className={`h-full ${color} shadow-[0_0_8px_rgba(0,0,0,0.1)]`}
                   />
                 </div>
                 <div className="flex justify-between mt-2">
-                  <span className={`text-[10px] font-bold ${pct >= 100 ? 'text-danger' : 'text-accent'}`}>{Math.round(pct)}% usado</span>
-                  <span className="text-[10px] text-ink-3">R$ {Math.max(0, b.limit - spent).toLocaleString('pt-BR')} restante</span>
+                  <span className={`text-[10px] font-bold ${pct >= 100 ? 'text-danger' : pct >= 80 ? 'text-warning' : 'text-accent'}`}>
+                    {Math.round(pct)}% usado
+                  </span>
+                  <span className="text-[10px] text-ink-3 font-medium">
+                    {pct >= 100 ? 'Limite excedido!' : `R$ ${Math.max(0, b.limit - spent).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} restante`}
+                  </span>
                 </div>
               </div>
             );
@@ -1283,6 +1365,42 @@ export default function App() {
       {/* Toast */}
       <AnimatePresence>
         {toast && <Toast message={toast} onClear={() => setToast(null)} />}
+      </AnimatePresence>
+
+      {/* PWA Install Prompt */}
+      <AnimatePresence>
+        {showInstallPrompt && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className="fixed bottom-24 left-4 right-4 bg-ink text-white p-4 rounded-2xl shadow-2xl z-[300] flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-surface/20 rounded-xl flex items-center justify-center text-xl">
+                📱
+              </div>
+              <div>
+                <p className="font-bold text-sm">Instalar Fluxo</p>
+                <p className="text-[10px] text-white/70">Adicione à tela inicial para acesso rápido</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setShowInstallPrompt(false)}
+                className="p-2 text-white/50 hover:text-white transition-colors"
+              >
+                <X size={16} />
+              </button>
+              <button 
+                onClick={handleInstallClick}
+                className="bg-accent text-white px-4 py-2 rounded-full text-xs font-bold"
+              >
+                Instalar
+              </button>
+            </div>
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );
